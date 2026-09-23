@@ -1,0 +1,57 @@
+# Local credentials and caches
+.env
+.env.*
+!.env.example
+.envrc
+.cache/
+.huggingface/
+hf_token
+huggingface_token
+token
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Downloaded models and job results (may contain private audio/transcripts)
+models/
+output/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+*.gguf
+*.sqlite
+*.sqlite3
+
+# Input audio and video belong to the local user unless licensed for release
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.aac
+*.ogg
+*.opus
+*.mp4
+*.mov
+*.mkv
+
+# OS files
+.DS_Store
+Thumbs.db

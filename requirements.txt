@@ -1,0 +1,32 @@
+# Local Whisper Turbo + pyannote Community-1 pipeline
+#
+# Recommended interpreter: Python 3.12
+# Minimum required by pyannote.audio 4.x: Python >= 3.10
+#
+# GPU note:
+# Install the CUDA-enabled PyTorch build appropriate for your NVIDIA driver/GPU
+# before running `pip install -r requirements.txt` when you need explicit CUDA
+# wheel selection. If a compatible torch/torchaudio pair is already installed,
+# pip will keep it.
+#
+# System dependencies (not installed by pip):
+#   - FFmpeg
+#   - A C compiler and matching Python development headers are optional for
+#     Triton's faster word-timestamp alignment on Linux.
+#   - Git LFS is optional; setup_models.sh downloads through huggingface_hub
+
+# Direct runtime dependencies used by transcribe_local.py
+numpy>=2.0,<3.0
+torch>=2.8,<2.15
+torchaudio>=2.8,<2.15
+
+# Reference OpenAI Whisper implementation.
+# 20250625 is the latest PyPI release as of 2026-09-23.
+openai-whisper==20250625
+
+# Community-1 requires pyannote.audio 4.x.
+# 4.0.7 is the latest PyPI release as of 2026-09-23.
+pyannote.audio==4.0.7
+
+# One-time browser sign-in and gated Community-1 model download.
+huggingface-hub>=1.32,<2
