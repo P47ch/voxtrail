@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from job_state import JOB_STATE_NAME, JobBusyError, atomic_text_file, job_lock, publish_exports
-from local_models import missing_pyannote_assets, whisper_model_error
+from local_models import file_sha256, missing_pyannote_assets, whisper_model_error
 
 # Loaded only after CLI parsing and local-model validation. This keeps --help fast.
 np: Any = None
@@ -337,10 +337,12 @@ def whisper_stage_signature(
     prompt: str | None,
     chunk_seconds: float,
     context_seconds: float,
+    *,
+    audio_sha256: str | None = None,
 ) -> str:
     payload = {
         "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
-        "normalized_audio": file_identity(normalized_wav),
+        "normalized_audio_sha256": audio_sha256 or file_sha256(normalized_wav),
         "model": file_identity(WHISPER_MODEL_PATH),
         "language": language,
         "prompt": prompt,
@@ -508,8 +510,10 @@ def run_whisper_chunks(
     context_seconds: float,
     force_generation: str | None,
     verbose: bool,
+    *,
+    stage_signature: str | None = None,
 ) -> None:
-    signature = whisper_stage_signature(
+    signature = stage_signature or whisper_stage_signature(
         normalized_wav, language, prompt, chunk_seconds, context_seconds
     )
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -621,10 +625,12 @@ def pyannote_stage_signature(
     max_speakers: int | None,
     chunk_seconds: float,
     context_seconds: float,
+    *,
+    audio_sha256: str | None = None,
 ) -> str:
     payload = {
         "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
-        "normalized_audio": file_identity(normalized_wav),
+        "normalized_audio_sha256": audio_sha256 or file_sha256(normalized_wav),
         "model": directory_identity(PYANNOTE_MODEL_PATH),
         "min_speakers": min_speakers,
         "max_speakers": max_speakers,
@@ -687,8 +693,10 @@ def run_pyannote_chunks(
     chunk_seconds: float,
     context_seconds: float,
     force_generation: str | None,
+    *,
+    stage_signature: str | None = None,
 ) -> None:
-    signature = pyannote_stage_signature(
+    signature = stage_signature or pyannote_stage_signature(
         normalized_wav, min_speakers, max_speakers, chunk_seconds, context_seconds
     )
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -1628,14 +1636,17 @@ def run_transcription(
     chunk_seconds = args.chunk_minutes * 60.0
     chunks = build_chunks(duration, chunk_seconds, args.context_seconds)
 
+    audio_sha256 = file_sha256(normalized_wav)
     whisper_signature = whisper_stage_signature(
-        normalized_wav, args.language, args.prompt, chunk_seconds, args.context_seconds
+        normalized_wav, args.language, args.prompt, chunk_seconds, args.context_seconds,
+        audio_sha256=audio_sha256,
     )
     if args.single_speaker:
         diarization_signature = "single-speaker-v1"
     else:
         diarization_signature = pyannote_stage_signature(
-            normalized_wav, args.min_speakers, args.max_speakers, chunk_seconds, args.context_seconds
+            normalized_wav, args.min_speakers, args.max_speakers, chunk_seconds, args.context_seconds,
+            audio_sha256=audio_sha256,
         )
     whisper_generation, diarization_generation, force_manifest = prepare_force_run(
         output_dir,
@@ -1662,6 +1673,7 @@ def run_transcription(
         context_seconds=args.context_seconds,
         force_generation=whisper_generation,
         verbose=args.whisper_verbose,
+        stage_signature=whisper_signature,
     )
 
     reconciliation_path = staged_dir / "speaker_reconciliation.json"
@@ -1680,6 +1692,7 @@ def run_transcription(
             chunk_seconds=chunk_seconds,
             context_seconds=args.context_seconds,
             force_generation=diarization_generation,
+            stage_signature=diarization_signature,
         )
         speaker_turns = reconcile_speakers(
             chunks=chunks,

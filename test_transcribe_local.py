@@ -231,6 +231,32 @@ class PipelineRegressionTests(unittest.TestCase):
             new_run = pipeline.prepare_force_run(output, True, False, "whisper-sig", "diarization-sig")
             self.assertNotEqual(first[0], new_run[0])
 
+    def test_stage_signatures_depend_on_audio_bytes_instead_of_path_or_mtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "first.wav"
+            second = root / "second.wav"
+            first.write_bytes(b"same audio")
+            second.write_bytes(first.read_bytes())
+            model = root / "model.pt"
+            model.write_bytes(b"weights")
+            community = root / "community"
+            community.mkdir()
+            with (
+                patch.object(pipeline, "WHISPER_MODEL_PATH", model),
+                patch.object(pipeline, "PYANNOTE_MODEL_PATH", community),
+            ):
+                def signatures(wav):
+                    return (
+                        pipeline.whisper_stage_signature(wav, "en", None, 60.0, 5.0),
+                        pipeline.pyannote_stage_signature(wav, None, None, 60.0, 5.0),
+                    )
+
+                self.assertEqual(signatures(first), signatures(second))
+                second.write_bytes(b"new audio!")
+                for old, new in zip(signatures(first), signatures(second)):
+                    self.assertNotEqual(old, new)
+
     def test_local_whisper_load_applies_turbo_alignment_heads_on_device(self):
         upstream = Mock()
         upstream._ALIGNMENT_HEADS = {"turbo": b"turbo-mask"}

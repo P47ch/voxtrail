@@ -1105,7 +1105,8 @@ Use:
 --rebuild-audio
 ```
 
-This recreates the 16 kHz mono PCM WAV from the original source.
+This recreates the 16 kHz mono PCM WAV from the original source. If the rebuilt
+WAV is byte-identical, its compatible inference checkpoints remain reusable.
 
 Normally this is unnecessary because the script stores source metadata and reuses a compatible normalized file.
 
