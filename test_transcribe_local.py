@@ -6,6 +6,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import random
 import subprocess
 import sys
@@ -46,6 +47,8 @@ class PipelineRegressionTests(unittest.TestCase):
                     wav.writeframes(sample.to_bytes(2, "little"))
 
             def normalize(command, *, check):
+                whitelist = command[command.index("-protocol_whitelist") + 1]
+                self.assertEqual(whitelist, "file,crypto,data")
                 source = Path(command[command.index("-i") + 1])
                 Path(command[-1]).write_bytes(source.read_bytes())
 
@@ -222,6 +225,18 @@ class PipelineRegressionTests(unittest.TestCase):
                     force_generation="run-1",
                     verbose=False,
                 )
+
+    def test_offline_flags_override_inherited_online_settings(self):
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import os, transcribe_local; print(os.environ['HF_HUB_OFFLINE'], "
+             "os.environ['TRANSFORMERS_OFFLINE'], os.environ['PYANNOTE_METRICS_ENABLED'])"],
+            cwd=SCRIPT.parent,
+            env={**os.environ, "HF_HUB_OFFLINE": "0", "TRANSFORMERS_OFFLINE": "0",
+                 "PYANNOTE_METRICS_ENABLED": "1"},
+            check=True, capture_output=True, text=True,
+        )
+        self.assertEqual(result.stdout.strip(), "1 1 0")
 
     def test_help_exits_without_loading_inference_dependencies(self):
         result = subprocess.run(

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 # This program is intentionally offline during normal operation.
 import os
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["PYANNOTE_METRICS_ENABLED"] = "0"
 
 import argparse
 import gc
@@ -249,6 +250,8 @@ def ensure_normalized_wav(input_path: Path, work_dir: Path, force: bool = False)
         "-loglevel",
         "error",
         "-y",
+        "-protocol_whitelist",
+        "file,crypto,data",
         "-i",
         str(input_path),
         "-map",

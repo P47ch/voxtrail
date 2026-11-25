@@ -386,9 +386,10 @@ The script sets these variables before importing model libraries:
 ```text
 HF_HUB_OFFLINE=1
 TRANSFORMERS_OFFLINE=1
+PYANNOTE_METRICS_ENABLED=0
 ```
 
-This is deliberate.
+FFmpeg is restricted to local file, data, and encryption protocols.
 
 During a normal transcription run:
 
