@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from functools import partial
+from itertools import accumulate
 from pathlib import Path
 from typing import Any
 
@@ -62,14 +65,28 @@ def _checkpoint_chunks(output_dir: Path) -> dict[int, dict[str, Any]]:
     return chunks
 
 
-def _excerpt(words: list[dict[str, Any]], start: float, end: float) -> str:
-    nearby = [
-        str(word.get("text", "")).strip()
-        for word in words
-        if float(word["end"]) >= start - 2 and float(word["start"]) <= end + 2
-    ]
-    result = " ".join(part for part in nearby if part)
-    return result[:157] + "..." if len(result) > 160 else result
+def _excerpt(
+    words: list[dict[str, Any]],
+    starts: list[float],
+    prefix_ends: list[float],
+    start: float,
+    end: float,
+) -> str:
+    first = bisect_left(prefix_ends, start - 2)
+    stop = bisect_right(starts, end + 2, lo=first)
+    parts = []
+    length = 0
+    for index in range(first, stop):
+        word = words[index]
+        if float(word["end"]) < start - 2:
+            continue
+        text = str(word.get("text", "")).strip()
+        if text:
+            length += len(text) + bool(parts)
+            parts.append(text)
+            if length > 160:
+                return " ".join(parts)[:157] + "..."
+    return " ".join(parts)
 
 
 def _group_words(
@@ -100,6 +117,10 @@ def build_quality_report(
         raise ValueError("Recording duration must be finite and nonnegative")
     chunks = chunks or {}
     words = sorted(words, key=lambda item: (item["start"], item["end"]))
+    starts = [float(word["start"]) for word in words]
+    # Prefix maxima let an earlier, overlapping word survive the lower bound.
+    prefix_ends = list(accumulate((float(word["end"]) for word in words), max))
+    excerpt = partial(_excerpt, words, starts, prefix_ends)
     mode = reconciliation.get("mode", "diarization")
 
     speaker_words: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -128,7 +149,7 @@ def build_quality_report(
         "start": float(group[0]["start"]),
         "end": max(float(word["end"]) for word in group),
         "words": len(group),
-        "excerpt": _excerpt(words, float(group[0]["start"]), float(group[-1]["end"])),
+        "excerpt": excerpt(float(group[0]["start"]), float(group[-1]["end"])),
     } for group in _group_words(unknown_words)]
 
     scored_words = [
@@ -149,7 +170,7 @@ def build_quality_report(
             "end": end,
             "low_score_words": len(group),
             "minimum_word_score": round(minimum, 3),
-            "excerpt": _excerpt(words, start, end),
+            "excerpt": excerpt(start, end),
         })
     low_score_groups.sort(key=lambda item: (item["minimum_word_score"], -item["low_score_words"], item["start"]))
 
@@ -184,19 +205,19 @@ def build_quality_report(
                 if similarity > float(threshold) + WEAK_EMBEDDING_MARGIN:
                     continue
                 speaker = chunk_report.get("mapping", {}).get(local, "UNKNOWN")
-                matching = next((
-                    word for word in speaker_words[speaker]
-                    if start is not None and end is not None
-                    and start <= float(word["start"]) < end
-                ), None)
-                review_start = float(matching["start"]) if matching else start
+                review_start = start
+                if start is not None and end is not None:
+                    spoken = speaker_words[speaker]
+                    first = bisect_left(spoken, start, key=lambda word: float(word["start"]))
+                    if first < len(spoken) and float(spoken[first]["start"]) < end:
+                        review_start = float(spoken[first]["start"])
                 weak_matches.append({
                     "chunk_index": index,
                     "speaker": speaker,
                     "start": review_start,
                     "cosine_similarity": round(similarity, 3),
                     "threshold": float(threshold),
-                    "excerpt": _excerpt(words, review_start, review_start) if review_start is not None else "",
+                    "excerpt": excerpt(review_start, review_start) if review_start is not None else "",
                 })
     weak_matches.sort(key=lambda item: (item["cosine_similarity"], item["chunk_index"]))
 

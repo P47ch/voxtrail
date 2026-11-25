@@ -510,6 +510,15 @@ class PipelineRegressionTests(unittest.TestCase):
         self.assertEqual(report["review"]["low_word_score"][0]["low_score_words"], 2)
         self.assertEqual(report["review"]["weak_speaker_match"][0]["start"], 11.0)
 
+    def test_report_excerpt_includes_overlapping_words_and_excludes_earlier_words(self):
+        words = [
+            {"start": 0.0, "end": 10.0, "text": "overlapping", "probability": 0.9, "speaker": "SPEAKER_00"},
+            {"start": 1.0, "end": 2.0, "text": "too early", "probability": 0.9, "speaker": "SPEAKER_00"},
+            {"start": 9.0, "end": 9.2, "text": "flagged", "probability": 0.02, "speaker": "SPEAKER_00"},
+        ]
+        report = quality_report.build_quality_report(words, [], {}, 10.0)
+        self.assertEqual(report["review"]["low_word_score"][0]["excerpt"], "overlapping flagged")
+
     def test_quality_report_cli_uses_existing_job_files(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
