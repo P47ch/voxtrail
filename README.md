@@ -198,7 +198,7 @@ the model weights.
 
 # Recommended project layout
 
-The script expects model files relative to `transcribe_local.py`.
+Voxtrail looks for models in the repository's `models/` directory.
 
 Recommended layout:
 
@@ -211,6 +211,8 @@ project/
 ├── setup_models.cmd
 ├── requirements.txt
 ├── README.md
+├── transcription/
+├── tests/
 │
 ├── models/
 │   ├── whisper/
@@ -232,7 +234,7 @@ models/whisper/large-v3-turbo.pt
 models/pyannote/speaker-diarization-community-1/
 ```
 
-If you move the models somewhere else, update the corresponding constants near the top of `transcribe_local.py`.
+To use a different model directory, update the paths in `transcription/local_models.py`.
 
 ---
 
@@ -1556,49 +1558,25 @@ For a known single-speaker recording, use `--whisper-only` during setup and
 
 # Development notes
 
-## Important source files
+The Python entry scripts at the repository root call into the `transcription/` package.
 
-```text
-transcribe_local.py
-quality_report.py
-job_state.py
-local_models.py
-setup_models.py
-setup_models.sh
-setup_models.cmd
-test_transcribe_local.py
-requirements.txt
-README.md
-```
+| Path | Responsibility |
+| --- | --- |
+| `transcription/cli.py` | Argument parsing and job orchestration |
+| `transcription/audio.py` | FFmpeg normalization and sample-accurate chunk reads |
+| `transcription/checkpoints.py` | Stage signatures, checkpoint validation, and forced-run state |
+| `transcription/inference/` | Whisper transcription and Community-1 diarization |
+| `transcription/runtime.py` | Lazy runtime imports and GPU cleanup |
+| `transcription/speakers.py` | Speaker reconciliation and attribution |
+| `transcription/transcript.py` | Word merging, utterances, and transcript formats |
+| `transcription/job_state.py` | Job locking and export publication |
+| `transcription/local_models.py` and `transcription/model_setup.py` | Model paths, validation, and setup |
+| `transcription/quality_report.py` | Review passages and report generation |
 
-## Main implementation areas
-
-`transcribe_local.py` currently contains:
-
-- local model validation
-- Git LFS pointer detection
-- atomic JSON checkpoint writes
-- FFmpeg normalization
-- sample-accurate WAV interval reading
-- external chunk construction
-- Whisper checkpoint generation
-- pyannote checkpoint generation
-- explicit GPU cleanup
-- speaker overlap matching
-- speaker embedding matching
-- global speaker profile construction
-- word-to-speaker assignment
-- utterance generation
-- TXT writer
-- JSON writers
-- SRT writer
-- WebVTT writer
-- CLI validation
-
-Run the focused regression suite with:
+Run the focused regression suite from the project root.
 
 ```bash
-python -m unittest -v test_transcribe_local
+python -m unittest -v tests.test_transcribe_local
 ```
 
 These tests use lightweight stand-ins for Torch and Whisper and do not download or
@@ -1707,10 +1685,8 @@ timestamped cues in `quality_report.txt`.
 
 # Public GitHub repository
 
-The public project consists of `.gitignore`, `LICENSE`, `README.md`, `requirements.txt`,
-`transcribe_local.py`, `quality_report.py`, `job_state.py`, `local_models.py`,
-`setup_models.py`, `setup_models.sh`,
-`setup_models.cmd`, and `test_transcribe_local.py`.
+The public project includes the `transcription/` package, the `tests/` suite, the
+root entry scripts, `requirements.txt`, `README.md`, `LICENSE`, and `.gitignore`.
 
 Keep `venv/`, `.venv/`, `models/`, `output/`, caches, credentials, and input
 audio/video files out of the repository. `output/` can contain full transcripts,

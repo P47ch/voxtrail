@@ -4,6 +4,12 @@ import hashlib
 from pathlib import Path
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MODELS_DIR = PROJECT_ROOT / "models"
+WHISPER_MODEL_PATH = MODELS_DIR / "whisper" / "large-v3-turbo.pt"
+PYANNOTE_MODEL_PATH = MODELS_DIR / "pyannote" / "speaker-diarization-community-1"
+
+
 # This is the Turbo checkpoint published by the pinned Whisper release.
 WHISPER_SHA256 = "aff26ae408abcba5fbf8813c21e62b0941638c5f6eebfb145be0c9839262a19a"
 PYANNOTE_REQUIRED_ASSETS = (
@@ -45,3 +51,23 @@ def missing_pyannote_assets(directory: Path) -> list[str]:
         if not prefix or prefix.startswith(b"version https://git-lfs.github.com/spec/v1"):
             missing.append(asset)
     return missing
+
+
+def validate_local_models(*, require_pyannote: bool = True) -> None:
+    errors = []
+    setup_flag = "" if require_pyannote else " --whisper-only"
+    setup = f"`bash setup_models.sh{setup_flag}` or `setup_models.cmd{setup_flag}` on Windows"
+
+    whisper_error = whisper_model_error(WHISPER_MODEL_PATH)
+    if whisper_error:
+        errors.append(f"Whisper Turbo model {whisper_error}: {WHISPER_MODEL_PATH}")
+
+    if require_pyannote:
+        missing = missing_pyannote_assets(PYANNOTE_MODEL_PATH)
+        if missing:
+            assets = ", ".join(missing)
+            errors.append(f"pyannote Community-1 model missing/incomplete: {PYANNOTE_MODEL_PATH} ({assets})")
+
+    if errors:
+        errors.append(f"Run {setup} to install or repair the local models.")
+        raise RuntimeError("\n\n".join(errors))
