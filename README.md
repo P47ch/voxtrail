@@ -1040,8 +1040,9 @@ Different changes require different levels of recomputation.
 
 Each job directory permits one writer at a time. Final exports are staged before
 publication. The `job_state.json` file records when the current run has published
-the full set of exports. Resume an interrupted job before regenerating its quality
-report or using its new exports.
+the full set of exports and provides the exact duration and chunk layout for the
+quality report. Resume an interrupted job before regenerating its quality report
+or using its new exports.
 
 Run exactly the same command.
 

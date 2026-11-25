@@ -40,13 +40,25 @@ def _save_text_atomic(path: Path, content: str) -> None:
 
 
 def _checkpoint_chunks(output_dir: Path) -> dict[int, dict[str, Any]]:
-    chunks: dict[int, dict[str, Any]] = {}
-    for path in sorted((output_dir / "checkpoints" / "whisper").glob("chunk_*.json")):
+    # Legacy jobs have no completed-job metadata. Chunk zero identifies the
+    # latest stage run, so ignore trailing files from an older stage signature.
+    cached: dict[int, dict[str, Any]] = {}
+    for path in (output_dir / "checkpoints" / "whisper").glob("chunk_*.json"):
         try:
-            chunk = _read_json(path)["chunk"]
-            chunks[int(chunk["index"])] = chunk
+            data = _read_json(path)
+            cached[int(data["chunk"]["index"])] = data
         except (OSError, ValueError, KeyError, TypeError):
             continue
+    if 0 not in cached:
+        return {}
+
+    signature = cached[0].get("stage_signature")
+    chunks: dict[int, dict[str, Any]] = {}
+    for index in range(len(cached)):
+        data = cached.get(index)
+        if data is None or data.get("stage_signature") != signature:
+            break
+        chunks[index] = data["chunk"]
     return chunks
 
 
@@ -280,6 +292,16 @@ def write_quality_report(
     chunks: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     output_dir = Path(output_dir)
+    state_path = output_dir / JOB_STATE_NAME
+    if state_path.exists():
+        state = _read_json(state_path)
+        if state["status"] != "complete":
+            raise ValueError("Job is incomplete. Resume transcription before generating the report.")
+        if duration_seconds is None and "duration_seconds" in state:
+            duration_seconds = float(state["duration_seconds"])
+        if chunks is None and "chunks" in state:
+            chunks = {int(chunk["index"]): chunk for chunk in state["chunks"]}
+
     words = words if words is not None else _read_json(output_dir / "words_with_speakers.json")
     utterances = utterances if utterances is not None else _read_json(output_dir / "transcript.json")
     reconciliation = reconciliation if reconciliation is not None else _read_json(output_dir / "speaker_reconciliation.json")
@@ -305,9 +327,6 @@ def main() -> None:
     try:
         output_dir = args.output.expanduser().resolve()
         with job_lock(output_dir):
-            state_path = output_dir / JOB_STATE_NAME
-            if state_path.exists() and _read_json(state_path)["status"] != "complete":
-                raise ValueError("Job is incomplete. Resume transcription before generating the report.")
             write_quality_report(output_dir)
     except (OSError, ValueError, KeyError, TypeError, JobBusyError) as error:
         parser.exit(1, f"Could not create quality report: {error}\n")

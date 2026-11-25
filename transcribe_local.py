@@ -1733,7 +1733,11 @@ def run_transcription(
     )
     publish_exports(staged_dir, output_dir)
     complete_force_run(force_manifest)
-    save_json_atomic(state_path, {"status": "complete"})
+    save_json_atomic(state_path, {
+        "status": "complete",
+        "duration_seconds": duration,
+        "chunks": chunks,
+    })
 
     print("\n" + "=" * 80)
     print("COMPLETE")

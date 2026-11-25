@@ -439,6 +439,13 @@ class PipelineRegressionTests(unittest.TestCase):
             validate.assert_called_once_with(require_pyannote=False)
             state = pipeline.load_json(output / JOB_STATE_NAME)
             self.assertEqual(state["status"], "complete")
+            self.assertEqual(state["duration_seconds"], 2.0)
+            pipeline.save_json_atomic(output / "checkpoints" / "whisper" / "chunk_000001.json", {
+                "stage_signature": "stale",
+                "chunk": {"index": 1, "core_start": 10.0, "core_end": 20.0},
+            })
+            rebuilt = quality_report.write_quality_report(output)
+            self.assertEqual(rebuilt["summary"]["duration_seconds"], 2.0)
             assigned = json.loads((output / "words_with_speakers.json").read_text(encoding="utf-8"))
             self.assertEqual({word["speaker"] for word in assigned}, {"SPEAKER_00"})
             self.assertEqual(json.loads((output / "speaker_reconciliation.json").read_text(encoding="utf-8"))["mode"], "single_speaker")
@@ -516,7 +523,12 @@ class PipelineRegressionTests(unittest.TestCase):
                 "mode": "single_speaker", "global_speakers": ["SPEAKER_00"], "chunks": [],
             })
             pipeline.save_json_atomic(output / "checkpoints" / "whisper" / "chunk_000000.json", {
+                "stage_signature": "current",
                 "chunk": {"index": 0, "core_start": 0.0, "core_end": 10.0},
+            })
+            pipeline.save_json_atomic(output / "checkpoints" / "whisper" / "chunk_000001.json", {
+                "stage_signature": "old",
+                "chunk": {"index": 1, "core_start": 10.0, "core_end": 20.0},
             })
             result = subprocess.run(
                 [sys.executable, str(SCRIPT.with_name("quality_report.py")), str(output)],
