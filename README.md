@@ -1708,13 +1708,16 @@ timestamped cues in `quality_report.txt`.
 # Public GitHub repository
 
 The public project consists of `.gitignore`, `LICENSE`, `README.md`, `requirements.txt`,
-`transcribe_local.py`, `quality_report.py`, `setup_models.py`, `setup_models.sh`,
+`transcribe_local.py`, `quality_report.py`, `job_state.py`, `local_models.py`,
+`setup_models.py`, `setup_models.sh`,
 `setup_models.cmd`, and `test_transcribe_local.py`.
 
 Keep `venv/`, `.venv/`, `models/`, `output/`, caches, credentials, and input
 audio/video files out of the repository. `output/` can contain full transcripts,
 the normalized audio, and metadata with an absolute path to the original input.
-The included `.gitignore` excludes these local files. The local sample MP3 is
+The included `.gitignore` covers Voxtrail's generated filenames in custom
+`--output` directories within this repository as well. For output inside another
+repository, use that repository's ignore rules. The local sample MP3 is
 also excluded; publish sample audio only when you have
 permission to redistribute it and have documented its license/source.
 

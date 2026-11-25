@@ -30,6 +30,39 @@ htmlcov/
 # Downloaded models and job results (may contain private audio/transcripts)
 models/
 output/
+
+# Voxtrail job artifacts under custom --output directories
+.voxtrail.lock
+job_state.json
+speaker_reconciliation.json
+words_with_speakers.json
+transcript.json
+transcript.txt
+transcript.srt
+transcript.vtt
+quality_report.json
+quality_report.txt
+speaker_reconciliation.json.tmp
+words_with_speakers.json.tmp
+transcript.json.tmp
+quality_report.json.tmp
+quality_report.txt.tmp
+.job_state.json.*.tmp
+.quality_report.json.*.tmp
+.quality_report.txt.*.tmp
+**/work/audio_16k_mono.meta.json
+**/work/audio_16k_mono.wav.tmp
+**/work/force_run.json
+**/work/audio_16k_mono.meta.json.tmp
+**/work/force_run.json.tmp
+**/work/.*.json.*.tmp
+.voxtrail-exports-*/
+**/checkpoints/whisper/chunk_*.json
+**/checkpoints/whisper/chunk_*.json.tmp
+**/checkpoints/whisper/.chunk_*.json.*.tmp
+**/checkpoints/diarization/chunk_*.json
+**/checkpoints/diarization/chunk_*.json.tmp
+**/checkpoints/diarization/.chunk_*.json.*.tmp
 *.pt
 *.pth
 *.ckpt
@@ -51,6 +84,7 @@ output/
 *.mp4
 *.mov
 *.mkv
+*.webm
 
 # OS files
 .DS_Store
