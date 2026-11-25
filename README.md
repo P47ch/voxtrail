@@ -568,7 +568,8 @@ Conceptually:
 Whisper checkpoints retain words from the full extended interval. Final assembly normally
 uses words from each chunk's **core**, then matches words near adjacent boundaries.
 Matching copies are kept once, including when slightly different timestamps put both
-copies outside their respective cores. Unmatched context words are not committed.
+copies outside their respective cores. Consecutive core words with the same text
+and separate timing intervals are preserved. Unmatched context words are not committed.
 
 This helps avoid:
 

@@ -99,10 +99,10 @@ class PipelineRegressionTests(unittest.TestCase):
 
     def test_boundary_merge_keeps_separate_repeated_words(self):
         chunks = pipeline.build_chunks(1200.0, 600.0, 15.0)
-        previous = {"start": 599.2, "end": 599.4, "text": " no", "probability": 0.9}
-        current = {"start": 600.2, "end": 600.4, "text": " no", "probability": 0.8}
+        previous = {"start": 599.90, "end": 599.98, "text": " no", "probability": 0.9}
+        current = {"start": 600.00, "end": 600.08, "text": " no", "probability": 0.8}
         words = self.merge_words(chunks, [[previous], [current]])
-        self.assertEqual(len(words), 2)
+        self.assertEqual(words, [previous, current])
 
     def merge_words(self, chunks, words_by_chunk):
         with tempfile.TemporaryDirectory() as directory:

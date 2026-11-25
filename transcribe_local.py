@@ -1203,7 +1203,9 @@ def load_all_words(chunks: list[dict[str, Any]], checkpoint_dir: Path) -> list[d
             for current_index, (_, current_word) in enumerate(current_words):
                 if previous_text != matching_word_text(current_word["text"]):
                     continue
-                distance = abs(word_midpoint(previous_word) - word_midpoint(current_word))
+                previous_midpoint = word_midpoint(previous_word)
+                current_midpoint = word_midpoint(current_word)
+                distance = abs(previous_midpoint - current_midpoint)
                 overlap = max(
                     0.0,
                     min(previous_word["end"], current_word["end"])
@@ -1213,6 +1215,12 @@ def load_all_words(chunks: list[dict[str, Any]], checkpoint_dir: Path) -> list[d
                     previous_word["end"] - previous_word["start"],
                     current_word["end"] - current_word["start"],
                 )
+                if (
+                    overlap == 0
+                    and in_core(previous_midpoint, previous_chunk)
+                    and in_core(current_midpoint, current_chunk)
+                ):
+                    continue
                 if distance <= BOUNDARY_MATCH_SECONDS and (
                     distance <= 0.12
                     or (shorter_duration > 0 and overlap / shorter_duration >= 0.25)
