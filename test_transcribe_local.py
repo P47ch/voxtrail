@@ -339,6 +339,17 @@ class PipelineRegressionTests(unittest.TestCase):
         self.assertTrue(pipeline.needs_word_separator("ready", "-"))
         self.assertTrue(pipeline.needs_word_separator("'Hello'", "world"))
 
+    def test_webvtt_escapes_cue_text_and_keeps_a_positive_rounded_duration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "transcript.vtt"
+            pipeline.save_vtt(path, [{
+                "start": 1.0002, "end": 1.0004,
+                "speaker": "SPEAKER_00", "text": "5 < 7 & -->",
+            }])
+            subtitle = path.read_text(encoding="utf-8")
+            self.assertIn("00:00:01.000 --> 00:00:01.001", subtitle)
+            self.assertIn("5 &lt; 7 &amp; --&gt;", subtitle)
+
     def test_invalid_cli_values_are_rejected(self):
         invalid = [
             ("--overlap-match-seconds", "0"),

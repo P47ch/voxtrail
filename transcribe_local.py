@@ -9,6 +9,7 @@ os.environ["PYANNOTE_METRICS_ENABLED"] = "0"
 import argparse
 import gc
 import hashlib
+import html
 import json
 import math
 import shutil
@@ -171,8 +172,15 @@ def print_gpu_memory(prefix: str = "") -> None:
     print(f"{prefix}CUDA: {allocated:.2f} GiB allocated, {reserved:.2f} GiB reserved")
 
 
+def timestamp_milliseconds(seconds: float) -> int:
+    return max(0, int(round(seconds * 1000)))
+
+
 def format_timestamp(seconds: float, srt: bool = False) -> str:
-    ms = max(0, int(round(seconds * 1000)))
+    return format_milliseconds(timestamp_milliseconds(seconds), srt=srt)
+
+
+def format_milliseconds(ms: int, *, srt: bool = False) -> str:
     hours, ms = divmod(ms, 3_600_000)
     minutes, ms = divmod(ms, 60_000)
     secs, ms = divmod(ms, 1000)
@@ -1429,10 +1437,10 @@ def save_vtt(path: Path, utterances: list[dict[str, Any]]) -> None:
         for item in utterances:
             text = f"{item['speaker']}: {item['text']}"
             wrapped = "\n".join(textwrap.wrap(text, width=84, break_long_words=False))
-            f.write(
-                f"{format_timestamp(item['start'])} --> {format_timestamp(item['end'])}\n"
-            )
-            f.write(f"{wrapped}\n\n")
+            start = timestamp_milliseconds(item["start"])
+            end = max(start + 1, timestamp_milliseconds(item["end"]))
+            f.write(f"{format_milliseconds(start)} --> {format_milliseconds(end)}\n")
+            f.write(f"{html.escape(wrapped, quote=False)}\n\n")
 
 
 # -----------------------------------------------------------------------------
