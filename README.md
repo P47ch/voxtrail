@@ -344,7 +344,8 @@ Linux/WSL; `HF_HOME` can change this location). It is never written into the
 project. The setup checks access, then downloads Whisper Turbo and Community-1
 into `models/`. An interrupted download can be resumed with the same command.
 
-To check local model and sign-in status without downloading:
+To verify the Whisper checksum and required Community-1 files, and check local
+sign-in status without downloading:
 
 ```bash
 bash setup_models.sh --check
@@ -1559,6 +1560,7 @@ For a known single-speaker recording, use `--whisper-only` during setup and
 transcribe_local.py
 quality_report.py
 job_state.py
+local_models.py
 setup_models.py
 setup_models.sh
 setup_models.cmd

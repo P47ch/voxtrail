@@ -9,6 +9,8 @@ import sys
 import sysconfig
 from pathlib import Path
 
+from local_models import WHISPER_SHA256, missing_pyannote_assets, whisper_model_error
+
 
 BASE_DIR = Path(__file__).resolve().parent
 WHISPER_PATH = BASE_DIR / "models" / "whisper" / "large-v3-turbo.pt"
@@ -22,24 +24,8 @@ class SetupError(Exception):
     pass
 
 
-def is_lfs_pointer(path: Path) -> bool:
-    try:
-        if path.stat().st_size > 1024:
-            return False
-        return path.read_bytes().startswith(b"version https://git-lfs.github.com/spec/v1")
-    except OSError:
-        return False
-
-
 def pyannote_ready() -> bool:
-    config = PYANNOTE_PATH / "config.yaml"
-    if not config.is_file() or is_lfs_pointer(config):
-        return False
-    return not any(
-        is_lfs_pointer(path)
-        for path in PYANNOTE_PATH.rglob("*")
-        if path.is_file() and ".git" not in path.parts
-    )
+    return not missing_pyannote_assets(PYANNOTE_PATH)
 
 
 def show_linux_build_tools() -> None:
@@ -59,14 +45,17 @@ def show_linux_build_tools() -> None:
 
 
 def show_status(*, whisper_only: bool = False) -> bool:
-    whisper_ready = WHISPER_PATH.is_file() and WHISPER_PATH.stat().st_size > 1_000_000
-    print(f"Whisper Turbo: {'ready' if whisper_ready else 'missing'} ({WHISPER_PATH})")
+    whisper_error = whisper_model_error(WHISPER_PATH)
+    whisper_ready = whisper_error is None
+    print(f"Whisper Turbo: {whisper_error or 'ready'} ({WHISPER_PATH})")
     if whisper_only:
         print("Community-1: not required for --single-speaker")
         show_linux_build_tools()
         return whisper_ready
-    diarization_ready = pyannote_ready()
-    print(f"Community-1: {'ready' if diarization_ready else 'missing'} ({PYANNOTE_PATH})")
+    missing_assets = missing_pyannote_assets(PYANNOTE_PATH)
+    diarization_ready = not missing_assets
+    state = "ready" if diarization_ready else f"incomplete ({', '.join(missing_assets)})"
+    print(f"Community-1: {state} ({PYANNOTE_PATH})")
     try:
         from huggingface_hub import get_token
     except ImportError:
@@ -137,8 +126,8 @@ def download_models(*, force_login: bool = False, whisper_only: bool = False) ->
     # openai-whisper is pinned in requirements.txt; its downloader verifies the
     # checkpoint SHA256 and reuses an existing valid file.
     turbo_url = whisper._MODELS["turbo"]
-    if turbo_url.rsplit("/", 1)[-1] != WHISPER_PATH.name:
-        raise SetupError("The installed Whisper Turbo filename differs from the project's expected checkpoint.")
+    if turbo_url.rsplit("/", 2)[-2:] != [WHISPER_SHA256, WHISPER_PATH.name]:
+        raise SetupError("The installed Whisper release points to an unexpected Turbo checkpoint.")
     WHISPER_PATH.parent.mkdir(parents=True, exist_ok=True)
     whisper._download(turbo_url, str(WHISPER_PATH.parent), False)
 

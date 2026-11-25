@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -17,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import local_models
 import quality_report
 import setup_models
 from job_state import EXPORT_NAMES, JOB_STATE_NAME, job_lock, publish_exports
@@ -341,11 +343,45 @@ class PipelineRegressionTests(unittest.TestCase):
             model.write_bytes(b"model")
             with (
                 patch.object(pipeline, "WHISPER_MODEL_PATH", model),
+                patch.object(local_models, "WHISPER_SHA256", hashlib.sha256(b"model").hexdigest()),
                 patch.object(pipeline, "PYANNOTE_MODEL_PATH", Path(directory) / "missing-pyannote"),
             ):
                 pipeline.validate_local_models(require_pyannote=False)
                 with self.assertRaisesRegex(RuntimeError, "pyannote Community-1 model missing"):
                     pipeline.validate_local_models(require_pyannote=True)
+
+    def test_preflight_requires_verified_whisper_and_all_community_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            whisper = root / "large-v3-turbo.pt"
+            whisper.write_bytes(b"incorrect checkpoint")
+            community = root / "community"
+            community.mkdir()
+            (community / "config.yaml").write_text("pipeline: {}", encoding="utf-8")
+            with (
+                patch.object(local_models, "WHISPER_SHA256", hashlib.sha256(b"model").hexdigest()),
+                patch.object(pipeline, "WHISPER_MODEL_PATH", whisper),
+                patch.object(pipeline, "PYANNOTE_MODEL_PATH", community),
+                patch.object(setup_models, "WHISPER_PATH", whisper),
+                patch.object(setup_models, "PYANNOTE_PATH", community),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertFalse(setup_models.show_status(whisper_only=True))
+                with self.assertRaisesRegex(RuntimeError, "checksum mismatch"):
+                    pipeline.validate_local_models(require_pyannote=False)
+                whisper.write_bytes(b"model")
+                with self.assertRaisesRegex(RuntimeError, "embedding/pytorch_model.bin"):
+                    pipeline.validate_local_models()
+                for asset in local_models.PYANNOTE_REQUIRED_ASSETS[1:]:
+                    path = community / asset
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(b"weights")
+                pipeline.validate_local_models()
+                self.assertTrue(setup_models.pyannote_ready())
+                (community / "embedding" / "pytorch_model.bin").write_bytes(
+                    b"version https://git-lfs.github.com/spec/v1\n"
+                )
+                self.assertFalse(setup_models.pyannote_ready())
 
     def test_single_speaker_run_skips_pyannote_and_writes_report(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -474,7 +510,7 @@ class PipelineRegressionTests(unittest.TestCase):
                 model.write_bytes(b"model")
 
             fake_whisper = SimpleNamespace(
-                _MODELS={"turbo": "https://example.invalid/large-v3-turbo.pt"},
+                _MODELS={"turbo": f"https://example.invalid/{local_models.WHISPER_SHA256}/large-v3-turbo.pt"},
                 _download=download,
             )
             with (

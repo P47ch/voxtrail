@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from job_state import JOB_STATE_NAME, JobBusyError, atomic_text_file, job_lock, publish_exports
+from local_models import missing_pyannote_assets, whisper_model_error
 
 # Loaded only after CLI parsing and local-model validation. This keeps --help fast.
 np: Any = None
@@ -118,50 +119,23 @@ def directory_identity(path: Path) -> dict[str, Any]:
     return {"path": str(path.resolve()), "files": files}
 
 
-def is_git_lfs_pointer(path: Path) -> bool:
-    try:
-        if path.stat().st_size > 1024:
-            return False
-        data = path.read_bytes()
-    except OSError:
-        return False
-    return data.startswith(b"version https://git-lfs.github.com/spec/v1")
-
-
 def validate_local_models(*, require_pyannote: bool = True) -> None:
-    errors: list[str] = []
+    errors = []
+    setup_flag = "" if require_pyannote else " --whisper-only"
+    setup = f"`bash setup_models.sh{setup_flag}` or `setup_models.cmd{setup_flag}` on Windows"
 
-    if not WHISPER_MODEL_PATH.is_file():
-        setup_command = "bash setup_models.sh" if require_pyannote else "bash setup_models.sh --whisper-only"
-        errors.append(
-            f"Whisper Turbo model missing: {WHISPER_MODEL_PATH}\n"
-            f"Run `{setup_command}` to download the local model."
-        )
+    whisper_error = whisper_model_error(WHISPER_MODEL_PATH)
+    if whisper_error:
+        errors.append(f"Whisper Turbo model {whisper_error}: {WHISPER_MODEL_PATH}")
 
     if require_pyannote:
-        config = PYANNOTE_MODEL_PATH / "config.yaml"
-        if not config.is_file():
-            errors.append(
-                f"pyannote Community-1 model missing/incomplete: {PYANNOTE_MODEL_PATH}\n"
-                "Accept the model conditions on Hugging Face, then run `bash setup_models.sh`."
-            )
-        elif is_git_lfs_pointer(config):
-            errors.append(f"pyannote config is still a Git LFS pointer: {config}")
-
-        if PYANNOTE_MODEL_PATH.exists():
-            pointer_files = [
-                p
-                for p in PYANNOTE_MODEL_PATH.rglob("*")
-                if p.is_file() and ".git" not in p.parts and is_git_lfs_pointer(p)
-            ]
-            if pointer_files:
-                shown = "\n".join(f"  - {p}" for p in pointer_files[:5])
-                errors.append(
-                    "Some pyannote model files are still Git LFS pointers:\n"
-                    f"{shown}\nRun `bash setup_models.sh` to complete the model download."
-                )
+        missing = missing_pyannote_assets(PYANNOTE_MODEL_PATH)
+        if missing:
+            assets = ", ".join(missing)
+            errors.append(f"pyannote Community-1 model missing/incomplete: {PYANNOTE_MODEL_PATH} ({assets})")
 
     if errors:
+        errors.append(f"Run {setup} to install or repair the local models.")
         raise RuntimeError("\n\n".join(errors))
 
 
