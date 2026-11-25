@@ -373,6 +373,7 @@ def whisper_stage_signature(
         "chunk_seconds": chunk_seconds,
         "context_seconds": context_seconds,
         "word_timestamps": True,
+        "alignment_heads": "turbo",
         "beam_size": 5,
         "temperature": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         "condition_on_previous_text": True,
@@ -504,6 +505,14 @@ def complete_force_run(manifest_path: Path | None) -> None:
     save_json_atomic(manifest_path, manifest)
 
 
+def load_local_whisper(device: str) -> Any:
+    model = whisper.load_model(str(WHISPER_MODEL_PATH), device=device)
+    # Upstream applies these heads for the model name, but skips them for a path.
+    model.set_alignment_heads(whisper._ALIGNMENT_HEADS["turbo"])
+    model.alignment_heads = model.alignment_heads.to(device)
+    return model
+
+
 def run_whisper_chunks(
     normalized_wav: Path,
     chunks: list[dict[str, Any]],
@@ -539,7 +548,7 @@ def run_whisper_chunks(
     print(f"Loading local Whisper model: {WHISPER_MODEL_PATH}")
     print(f"Device: {device}")
 
-    model = whisper.load_model(str(WHISPER_MODEL_PATH), device=device)
+    model = load_local_whisper(device)
     print_gpu_memory("After Whisper load: ")
 
     try:

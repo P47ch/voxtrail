@@ -15,7 +15,7 @@ import unittest
 import wave
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import quality_report
 import setup_models
@@ -195,6 +195,17 @@ class PipelineRegressionTests(unittest.TestCase):
             pipeline.complete_force_run(first[2])
             new_run = pipeline.prepare_force_run(output, True, False, "whisper-sig", "diarization-sig")
             self.assertNotEqual(first[0], new_run[0])
+
+    def test_local_whisper_load_applies_turbo_alignment_heads_on_device(self):
+        upstream = Mock()
+        upstream._ALIGNMENT_HEADS = {"turbo": b"turbo-mask"}
+        model = upstream.load_model.return_value
+        aligned_on_device = model.alignment_heads.to.return_value
+        with patch.object(pipeline, "whisper", upstream):
+            self.assertIs(pipeline.load_local_whisper("cuda"), model)
+        upstream.load_model.assert_called_once_with(str(pipeline.WHISPER_MODEL_PATH), device="cuda")
+        model.set_alignment_heads.assert_called_once_with(b"turbo-mask")
+        self.assertIs(model.alignment_heads, aligned_on_device)
 
     def test_interrupted_forced_whisper_pass_skips_completed_chunk(self):
         chunk = pipeline.build_chunks(10.0, 600.0, 0.0)[0]
