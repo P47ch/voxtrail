@@ -1327,12 +1327,10 @@ With the default `--chunk-minutes 10`, a recording of about 2 hours 10 minutes
 has 13 chunks. A checkpoint is written after each completed chunk; if the
 process stops, rerun the same command and completed chunks will be skipped.
 
-Whisper's internal bar can also finish below 100% (for example, at 97%) even
-when the chunk has completed. Its decoder sometimes advances past silence or
-suspected hallucinations without updating the bar. The reliable completion
-signal is the following `Saved ... extended words -> .../chunk_XXXXXX.json`
-line and the checkpoint file itself. If the next chunk starts, the previous
-one finished. Once all chunks are done, the script continues with diarization
+Whisper's progress bar can finish below 100% when the decoder advances past
+silence without updating the bar. This is expected. Voxtrail prints
+`[Whisper N/total] Complete. Saved ... extended words` once the chunk checkpoint
+has been written. Once all chunks are done, the script continues with diarization
 and writes the final transcript files in the job's output directory.
 
 ---

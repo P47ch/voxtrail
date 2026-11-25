@@ -181,6 +181,7 @@ def run_transcription(
     whisper_checkpoint_dir = output_dir / "checkpoints" / "whisper"
     diarization_checkpoint_dir = output_dir / "checkpoints" / "diarization"
 
+    print("Starting transcription. Verifying local models and loading dependencies...", flush=True)
     local_models.validate_local_models(require_pyannote=not args.single_speaker)
     runtime.load_runtime_dependencies()
 

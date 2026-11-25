@@ -53,6 +53,13 @@ def run_whisper_chunks(
         print("All Whisper chunks already checkpointed. Skipping model load.")
         return
 
+    if not verbose:
+        print(
+            "Whisper's progress bar can finish below 100% when it skips silence. This is expected. "
+            "Look for 'Complete' to confirm the chunk was saved.",
+            flush=True,
+        )
+
     device = "cuda" if runtime.torch.cuda.is_available() else "cpu"
     print(f"Loading local Whisper model: {local_models.WHISPER_MODEL_PATH}")
     print(f"Device: {device}")
@@ -123,7 +130,10 @@ def run_whisper_chunks(
                 "words_extended": words_extended,
             }
             checkpoints.save_json_atomic(checkpoint, checkpoint_data)
-            print(f"Saved {len(words_extended)} extended words -> {checkpoint}")
+            print(
+                f"[Whisper {n}/{len(chunks)}] Complete. Saved {len(words_extended)} extended words -> {checkpoint}",
+                flush=True,
+            )
 
             del result
             del audio
