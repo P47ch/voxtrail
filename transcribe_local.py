@@ -382,25 +382,27 @@ def whisper_stage_signature(
     return stable_hash(payload)
 
 
+def finite_number(value: Any) -> bool:
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def valid_timed_item(item: Any, *, speaker: bool = False) -> bool:
     if not isinstance(item, dict):
         return False
-    try:
-        start = float(item["start"])
-        end = float(item["end"])
-    except (KeyError, TypeError, ValueError):
-        return False
-    if not (math.isfinite(start) and math.isfinite(end) and 0 <= start <= end):
+    start = item.get("start")
+    end = item.get("end")
+    if not (finite_number(start) and finite_number(end) and 0 <= start <= end):
         return False
     key = "speaker" if speaker else "text"
     if not isinstance(item.get(key), str):
         return False
-    if not speaker and item.get("probability") is not None:
-        try:
-            return math.isfinite(float(item["probability"]))
-        except (TypeError, ValueError, OverflowError):
-            return False
-    return True
+    probability = item.get("probability")
+    return speaker or probability is None or (
+        finite_number(probability) and 0 <= probability <= 1
+    )
 
 
 def load_valid_chunk_checkpoint(
@@ -439,8 +441,7 @@ def load_valid_chunk_checkpoint(
                 return None
             if not isinstance(durations, dict) or not all(
                 isinstance(label, str)
-                and isinstance(value, (int, float))
-                and math.isfinite(value)
+                and finite_number(value)
                 and value >= 0
                 for label, value in durations.items()
             ):
@@ -469,8 +470,18 @@ def prepare_force_run(
     if manifest_path.is_file():
         try:
             candidate = load_json(manifest_path)
-            if isinstance(candidate, dict) and not candidate.get("complete"):
-                active = candidate
+            if isinstance(candidate, dict) and candidate.get("complete") is False:
+                generation = candidate.get("generation")
+                stages = candidate.get("requested")
+                if (
+                    isinstance(generation, str)
+                    and generation
+                    and isinstance(stages, dict)
+                    and stages.keys() == requested.keys()
+                    and all(value is None or isinstance(value, str) and value for value in stages.values())
+                    and any(stages.values())
+                ):
+                    active = candidate
         except (OSError, ValueError):
             pass
 

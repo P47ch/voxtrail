@@ -184,6 +184,39 @@ class PipelineRegressionTests(unittest.TestCase):
                 pipeline.load_valid_chunk_checkpoint(path, "sig", chunk, "whisper", "run-2")
             )
 
+    def test_timed_checkpoint_fields_reject_numeric_strings_and_invalid_probabilities(self):
+        chunk = pipeline.build_chunks(10.0, 600.0, 0.0)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "chunk.json"
+            for field, value in (("start", "1.0"), ("start", True), ("end", float("inf")),
+                                 ("probability", "0.9"), ("probability", 1.5)):
+                with self.subTest(field=field, value=value):
+                    word = {"start": 1.0, "end": 2.0, "text": " hi", "probability": 0.9}
+                    word[field] = value
+                    pipeline.save_json_atomic(path, {
+                        "stage": "whisper", "stage_signature": "sig", "chunk": chunk,
+                        "words_extended": [word],
+                    })
+                    cached = pipeline.load_valid_chunk_checkpoint(path, "sig", chunk, "whisper")
+                    self.assertIsNone(cached)
+
+    def test_invalid_force_manifest_is_ignored_and_can_be_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            path = output / "work" / "force_run.json"
+            for manifest in ({"complete": False},
+                             {"complete": False, "generation": "run-1", "requested": []}):
+                with self.subTest(manifest=manifest):
+                    pipeline.save_json_atomic(path, manifest)
+                    self.assertEqual(
+                        pipeline.prepare_force_run(output, False, False, "w", "d"),
+                        (None, None, None),
+                    )
+            whisper, diarization, manifest_path = pipeline.prepare_force_run(output, True, False, "w", "d")
+            self.assertTrue(whisper)
+            self.assertIsNone(diarization)
+            self.assertEqual(manifest_path, path)
+
     def test_force_run_resumes_then_starts_new_generation(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
