@@ -221,6 +221,8 @@ def ensure_normalized_wav(input_path: Path, work_dir: Path, force: bool = False)
 
     source_id = file_identity(input_path)
     expected_meta = {
+        # A legacy entry may already pair a new WAV with old source metadata.
+        "cache_version": 1,
         "source": source_id,
         "sample_rate": SAMPLE_RATE,
         "channels": 1,
@@ -267,8 +269,13 @@ def ensure_normalized_wav(input_path: Path, work_dir: Path, force: bool = False)
 
     try:
         subprocess.run(command, check=True)
+        validate_normalized_wav(tmp)
+        if file_identity(input_path) != source_id:
+            raise RuntimeError(f"Input changed while FFmpeg was reading it: {input_path}")
+        # Invalidate the old metadata before replacing its WAV. An interrupted
+        # publish can then leave a cache miss, but never a mismatched cache hit.
+        save_json_atomic(meta_path, None)
         tmp.replace(wav_path)
-        validate_normalized_wav(wav_path)
         save_json_atomic(meta_path, expected_meta)
     finally:
         if tmp.exists():

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -34,6 +35,49 @@ pipeline = load_pipeline()
 
 
 class PipelineRegressionTests(unittest.TestCase):
+    def test_interrupted_normalization_cannot_reuse_audio_from_another_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sources = [root / "first.wav", root / "second.wav"]
+            for sample, path in enumerate(sources):
+                with wave.open(str(path), "wb") as wav:
+                    wav.setparams((1, 2, 16_000, 0, "NONE", "not compressed"))
+                    wav.writeframes(sample.to_bytes(2, "little"))
+
+            def normalize(command, *, check):
+                source = Path(command[command.index("-i") + 1])
+                Path(command[-1]).write_bytes(source.read_bytes())
+
+            save_json = pipeline.save_json_atomic
+
+            def interrupt_publish(path, data):
+                if data is not None:
+                    raise KeyboardInterrupt
+                save_json(path, data)
+
+            with (
+                patch.object(pipeline, "require_binary", return_value="ffmpeg"),
+                patch.object(pipeline.subprocess, "run", side_effect=normalize),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                work = root / "work"
+                wav = pipeline.ensure_normalized_wav(sources[0], work)
+                with patch.object(pipeline, "save_json_atomic", side_effect=interrupt_publish):
+                    with self.assertRaises(KeyboardInterrupt):
+                        pipeline.ensure_normalized_wav(sources[1], work)
+                self.assertEqual(wav.read_bytes(), sources[1].read_bytes())
+                wav = pipeline.ensure_normalized_wav(sources[0], work)
+                self.assertEqual(wav.read_bytes(), sources[0].read_bytes())
+
+                # An older version may already have left mismatched WAV and metadata.
+                meta_path = work / "audio_16k_mono.meta.json"
+                legacy = pipeline.load_json(meta_path)
+                del legacy["cache_version"]
+                pipeline.save_json_atomic(meta_path, legacy)
+                wav.write_bytes(sources[1].read_bytes())
+                wav = pipeline.ensure_normalized_wav(sources[0], work)
+                self.assertEqual(wav.read_bytes(), sources[0].read_bytes())
+
     def test_boundary_merge_removes_duplicate_core_words(self):
         chunks = pipeline.build_chunks(1200.0, 600.0, 15.0)
         previous = {"start": 599.7, "end": 600.1, "text": " hello", "probability": 0.9}
