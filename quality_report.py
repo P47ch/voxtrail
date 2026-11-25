@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+from job_state import JOB_STATE_NAME, JobBusyError, atomic_text_file, job_lock
 
 
 LOW_WORD_SCORE = 0.30
@@ -34,16 +35,8 @@ def _read_json(path: Path) -> Any:
 
 
 def _save_text_atomic(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    try:
-        with temporary.open("w", encoding="utf-8", newline="\n") as file:
-            file.write(content)
-            file.flush()
-            os.fsync(file.fileno())
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    with atomic_text_file(path, newline="\n") as file:
+        file.write(content)
 
 
 def _checkpoint_chunks(output_dir: Path) -> dict[int, dict[str, Any]]:
@@ -284,6 +277,7 @@ def write_quality_report(
     words: list[dict[str, Any]] | None = None,
     utterances: list[dict[str, Any]] | None = None,
     reconciliation: dict[str, Any] | None = None,
+    chunks: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     output_dir = Path(output_dir)
     words = words if words is not None else _read_json(output_dir / "words_with_speakers.json")
@@ -291,7 +285,8 @@ def write_quality_report(
     reconciliation = reconciliation if reconciliation is not None else _read_json(output_dir / "speaker_reconciliation.json")
     if not isinstance(words, list) or not isinstance(utterances, list) or not isinstance(reconciliation, dict):
         raise ValueError("Completed-job JSON files have an unexpected structure")
-    chunks = _checkpoint_chunks(output_dir)
+    if chunks is None:
+        chunks = _checkpoint_chunks(output_dir)
     if duration_seconds is None:
         duration_seconds = (
             max(float(chunk["core_end"]) for chunk in chunks.values())
@@ -308,8 +303,13 @@ def main() -> None:
     parser.add_argument("output", type=Path, help="Completed job directory, e.g. output/recording")
     args = parser.parse_args()
     try:
-        write_quality_report(args.output.expanduser().resolve())
-    except (OSError, ValueError, KeyError, TypeError) as error:
+        output_dir = args.output.expanduser().resolve()
+        with job_lock(output_dir):
+            state_path = output_dir / JOB_STATE_NAME
+            if state_path.exists() and _read_json(state_path)["status"] != "complete":
+                raise ValueError("Job is incomplete. Resume transcription before generating the report.")
+            write_quality_report(output_dir)
+    except (OSError, ValueError, KeyError, TypeError, JobBusyError) as error:
         parser.exit(1, f"Could not create quality report: {error}\n")
     print(f"Quality report: {args.output / 'quality_report.txt'}")
     print(f"Review data:    {args.output / 'quality_report.json'}")

@@ -13,12 +13,15 @@ import math
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 import unicodedata
 import uuid
 import wave
 from pathlib import Path
 from typing import Any
+
+from job_state import JOB_STATE_NAME, JobBusyError, atomic_text_file, job_lock, publish_exports
 
 # Loaded only after CLI parsing and local-model validation. This keeps --help fast.
 np: Any = None
@@ -74,13 +77,8 @@ def json_default(value: Any):
 
 
 def save_json_atomic(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
+    with atomic_text_file(path) as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=json_default)
-        f.flush()
-        os.fsync(f.fileno())
-    tmp.replace(path)
 
 
 def load_json(path: Path) -> Any:
@@ -1579,10 +1577,22 @@ def main() -> None:
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
     output_dir = Path(args.output).expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with job_lock(output_dir):
+            # The staging directory must be on the same volume as the exports.
+            with tempfile.TemporaryDirectory(prefix=".voxtrail-exports-", dir=output_dir) as directory:
+                run_transcription(args, input_path, output_dir, Path(directory))
+    except JobBusyError as error:
+        sys.exit(str(error))
+
+
+def run_transcription(
+    args: argparse.Namespace, input_path: Path, output_dir: Path, staged_dir: Path
+) -> None:
     work_dir = output_dir / "work"
     whisper_checkpoint_dir = output_dir / "checkpoints" / "whisper"
     diarization_checkpoint_dir = output_dir / "checkpoints" / "diarization"
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     validate_local_models(require_pyannote=not args.single_speaker)
     load_runtime_dependencies()
@@ -1602,6 +1612,8 @@ def main() -> None:
     else:
         print("GPU:     CUDA unavailable -> CPU fallback")
 
+    state_path = output_dir / JOB_STATE_NAME
+    save_json_atomic(state_path, {"status": "running"})
     normalized_wav = ensure_normalized_wav(
         input_path, work_dir, force=args.rebuild_audio
     )
@@ -1647,7 +1659,7 @@ def main() -> None:
         verbose=args.whisper_verbose,
     )
 
-    reconciliation_path = output_dir / "speaker_reconciliation.json"
+    reconciliation_path = staged_dir / "speaker_reconciliation.json"
     if args.single_speaker:
         print("\nSTAGE 2 / 3 - SINGLE SPEAKER (PYANNOTE SKIPPED)")
         save_single_speaker_reconciliation(reconciliation_path)
@@ -1687,20 +1699,23 @@ def main() -> None:
         max_gap=args.utterance_gap_seconds,
     )
 
-    save_json_atomic(output_dir / "words_with_speakers.json", words_with_speakers)
-    save_json_atomic(output_dir / "transcript.json", utterances)
-    save_txt(output_dir / "transcript.txt", utterances)
-    save_srt(output_dir / "transcript.srt", utterances)
-    save_vtt(output_dir / "transcript.vtt", utterances)
+    save_json_atomic(staged_dir / "words_with_speakers.json", words_with_speakers)
+    save_json_atomic(staged_dir / "transcript.json", utterances)
+    save_txt(staged_dir / "transcript.txt", utterances)
+    save_srt(staged_dir / "transcript.srt", utterances)
+    save_vtt(staged_dir / "transcript.vtt", utterances)
     from quality_report import write_quality_report
     write_quality_report(
-        output_dir,
+        staged_dir,
         duration_seconds=duration,
         words=words_with_speakers,
         utterances=utterances,
         reconciliation=load_json(reconciliation_path),
+        chunks={chunk["index"]: chunk for chunk in chunks},
     )
+    publish_exports(staged_dir, output_dir)
     complete_force_run(force_manifest)
+    save_json_atomic(state_path, {"status": "complete"})
 
     print("\n" + "=" * 80)
     print("COMPLETE")
@@ -1711,7 +1726,7 @@ def main() -> None:
     print(f"JSON:       {output_dir / 'transcript.json'}")
     print(f"SRT:        {output_dir / 'transcript.srt'}")
     print(f"VTT:        {output_dir / 'transcript.vtt'}")
-    print(f"Debug map:  {reconciliation_path}")
+    print(f"Debug map:  {output_dir / reconciliation_path.name}")
     print(f"Quality:    {output_dir / 'quality_report.txt'}")
     print("\nIf the process stops, run the same command again. Valid completed chunks are reused.")
 

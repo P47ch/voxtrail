@@ -1035,6 +1035,11 @@ Different changes require different levels of recomputation.
 
 ## Normal restart after a crash
 
+Each job directory permits one writer at a time. Final exports are staged before
+publication. The `job_state.json` file records when the current run has published
+the full set of exports. Resume an interrupted job before regenerating its quality
+report or using its new exports.
+
 Run exactly the same command.
 
 Compatible Whisper chunks are reused; multi-speaker runs also reuse compatible
@@ -1551,6 +1556,7 @@ For a known single-speaker recording, use `--whisper-only` during setup and
 ```text
 transcribe_local.py
 quality_report.py
+job_state.py
 setup_models.py
 setup_models.sh
 setup_models.cmd

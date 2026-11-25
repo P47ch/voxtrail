@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import quality_report
 import setup_models
+from job_state import EXPORT_NAMES, JOB_STATE_NAME, job_lock, publish_exports
 
 
 SCRIPT = Path(__file__).with_name("transcribe_local.py")
@@ -315,10 +316,47 @@ class PipelineRegressionTests(unittest.TestCase):
             ):
                 pipeline.main()
             validate.assert_called_once_with(require_pyannote=False)
+            state = pipeline.load_json(output / JOB_STATE_NAME)
+            self.assertEqual(state["status"], "complete")
             assigned = json.loads((output / "words_with_speakers.json").read_text(encoding="utf-8"))
             self.assertEqual({word["speaker"] for word in assigned}, {"SPEAKER_00"})
             self.assertEqual(json.loads((output / "speaker_reconciliation.json").read_text(encoding="utf-8"))["mode"], "single_speaker")
             self.assertEqual(json.loads((output / "quality_report.json").read_text(encoding="utf-8"))["summary"]["word_count"], 2)
+
+    def test_incomplete_job_and_active_writer_are_rejected_by_report_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            command = [sys.executable, str(SCRIPT.with_name("quality_report.py")), str(output)]
+            with job_lock(output):
+                result = subprocess.run(command, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("already in use", result.stderr)
+            pipeline.save_json_atomic(output / JOB_STATE_NAME, {"status": "running"})
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Job is incomplete", result.stderr)
+
+    def test_interrupted_export_publication_cannot_leave_mixed_generations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            staged = output / "staged"
+            staged.mkdir()
+            for name in EXPORT_NAMES:
+                (output / name).write_text("old", encoding="utf-8")
+                (staged / name).write_text("new", encoding="utf-8")
+
+            replace = Path.replace
+
+            def interrupt_second_export(source, destination):
+                if source.name == EXPORT_NAMES[1]:
+                    raise KeyboardInterrupt
+                replace(source, destination)
+
+            with patch.object(Path, "replace", interrupt_second_export):
+                with self.assertRaises(KeyboardInterrupt):
+                    publish_exports(staged, output)
+            self.assertEqual((output / EXPORT_NAMES[0]).read_text(encoding="utf-8"), "new")
+            self.assertFalse(any((output / name).exists() for name in EXPORT_NAMES[1:]))
 
     def test_quality_report_flags_review_passages_without_models(self):
         words = [
